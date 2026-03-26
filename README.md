@@ -198,3 +198,90 @@ The Management Core oversees all high-level operations of the ASIC. It does not 
 5. NPU executes convolution + dense layers in two pipelines
 6. Results written to output registers
 7. MCU reads outputs to adjust VFD control or trigger alarms
+
+## 3.0 Design Justification & Feasibility
+## 3.1 Why Not a Microcontroller
+
+A microcontroller implementation was considered but rejected due to:
+
+- Non-deterministic latency caused by interrupts and scheduling
+- CPU contention with real-time control tasks
+- Inefficient sequential execution of repeated inference workloads
+
+The proposed ASIC provides:
+- Fixed-latency inference (deterministic cycle count)
+- Parallel execution (multiple MAC operations per cycle)
+- Isolation from control loop execution
+- Lower energy per inference
+
+## 3.2 Feasibility
+
+The design is constrained to fit within the Caravel user project area:
+
+- Small NPU (limited MAC array)
+- Minimal on-chip memory (small SRAM buffers)
+- Fixed model architecture
+- No floating-point operations (INT8 only)
+
+The workload (small 1D CNN / MLP) is specifically chosen to match these constraints.
+
+### 3.3 Area Estimates (SKY130)
+| Module                        | Area (mm²)|
+|-------------------------------|-----------|
+| MAC Array (8×8 × 2 pipelines) | ~3.1       |
+| SRAM (~16 KB)                 | 1.6       |
+| Preprocessing                 | 0.08      |
+| FSM / Control Logic           | 0.12      |
+| Management Core               | 0.15      |
+| Interfaces                    | 0.05      |
+| **Total**                     | **~5.1**   |
+
+## 4.0 Verification Plan
+
+The design will be verified across three levels: functional correctness, system integration, and hardware validation.
+
+### 4.1 Unit-Level Verification
+Each module (MAC, buffers, preprocessing, interfaces) will be tested using Verilog testbenches to ensure correct arithmetic, data movement, and boundary behavior.
+
+### 4.2 NPU Functional Verification
+A reference model will be implemented in Python (NumPy/PyTorch) using the same quantized (INT8) network.
+
+- Identical inputs will be fed into both the software model and RTL simulation  
+- Outputs will be compared for correctness (bit-accurate or within quantization limits)
+
+### 4.3 System-Level Simulation
+Full pipeline simulation:
+Input → Buffer → Preprocessing → NPU → Output
+
+- Verify continuous streaming operation  
+- Validate correct sequencing and data integrity  
+- Ensure no stalls or corruption across modules  
+
+### 4.4 Timing Verification
+- Measure total inference latency (~192 cycles target)  
+- Confirm deterministic execution with no variation across runs  
+
+### 4.5 FPGA Prototyping (Pre-Silicon Validation)
+The RTL design will be synthesized onto an FPGA (e.g., Xilinx or Intel platform) to validate real-time operation.
+
+- External MCU or testbench streams input data to FPGA  
+- NPU executes inference in real-time  
+- Outputs captured and compared with software reference  
+
+This step validates:
+- End-to-end dataflow in hardware  
+- Interface correctness (SPI/I2C)  
+- Real-time performance under realistic conditions  
+
+### 4.6 Post-Silicon Validation
+After fabrication on Caravel:
+
+- Integrate with external MCU  
+- Stream real or recorded motor signals  
+- Compare outputs against FPGA/software results  
+
+### 4.7 Success Criteria
+- RTL matches reference model outputs  
+- Deterministic latency achieved  
+- Stable operation in simulation and FPGA  
+- Consistent behavior in post-silicon testing  
